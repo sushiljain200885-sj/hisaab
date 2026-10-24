@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="hi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Hisaab — Kharch aur Aamdani</title>
+<meta name="description" content="Voice se kharch aur aamdani likhein, report dekhein. Google Sheet me data.">
+<meta name="theme-color" content="#0D9488">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Hisaab">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ================= HEADER ================= -->
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <span class="brand-mark">₹</span>
+        <div class="brand-text">
+          <strong>Hisaab</strong>
+          <span>kharch &amp; aamdani</span>
+        </div>
+      </div>
+      <button class="conn-pill" id="connPill" title="Sheet status">
+        <span class="dot"></span><span id="connText">Demo</span>
+      </button>
+    </div>
+
+    <div class="month-row">
+      <button class="month-btn" id="prevMonth" aria-label="Pichla mahina">‹</button>
+      <button class="month-label" id="monthLabel">October 2026</button>
+      <button class="month-btn" id="nextMonth" aria-label="Agla mahina">›</button>
+      <button class="add-btn" id="addBtn" aria-label="Naya entry">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN ================= -->
+  <main id="main">
+
+    <!-- ---------- REPORT ---------- -->
+    <section class="view is-active" id="view-report">
+
+      <div class="banner" id="demoBanner" hidden>
+        <span>Ye <b>demo data</b> hai. Apna hisaab shuru karne ke liye Google Sheet connect karein.</span>
+        <button id="demoBannerBtn">Connect</button>
+      </div>
+
+      <div class="cards">
+        <div class="stat income">
+          <span class="stat-label">Aamdani</span>
+          <strong class="stat-value" id="sumIncome">₹0</strong>
+        </div>
+        <div class="stat expense">
+          <span class="stat-label">Kharch</span>
+          <strong class="stat-value" id="sumExpense">₹0</strong>
+        </div>
+        <div class="stat balance">
+          <span class="stat-label">Bachat</span>
+          <strong class="stat-value" id="sumBalance">₹0</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Roz ka kharch</h3>
+          <span class="muted small" id="trendLegend">is mahine</span>
+        </div>
+        <div class="trend" id="trend"></div>
+        <p class="empty small" id="trendEmpty" hidden>Is mahine koi entry nahi hai.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Category-wise</h3>
+          <div class="seg sm" id="catSeg">
+            <button data-type="expense" class="on">Kharch</button>
+            <button data-type="income">Aamdani</button>
+          </div>
+        </div>
+        <div class="donut-wrap" id="donutWrap">
+          <div class="donut-box" id="donut"></div>
+        </div>
+        <ul class="cat-list" id="catList"></ul>
+        <p class="empty small" id="catEmpty" hidden>Koi entry nahi hai.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Is mahine ki entry</h3><span class="muted small" id="cntLabel">0</span></div>
+        <ul class="tx-list" id="txListMini"></ul>
+      </div>
+
+    </section>
+
+    <!-- ---------- ENTRIES ---------- -->
+    <section class="view" id="view-entries">
+      <div class="searchbar">
+        <input id="searchInput" type="search" placeholder="Note ya category search karein">
+        <select id="filterType" aria-label="Type filter">
+          <option value="">Sab</option>
+          <option value="expense">Kharch</option>
+          <option value="income">Aamdani</option>
+        </select>
+      </div>
+      <div class="filter-chip" id="filterChip" hidden>
+        <span id="filterChipText"></span>
+        <button id="filterChipClear" aria-label="Filter hatayein">✕</button>
+      </div>
+      <ul class="tx-list" id="txList"></ul>
+      <p class="empty" id="txEmpty" hidden>Kuch nahi mila.</p>
+    </section>
+
+    <!-- ---------- SETTINGS ---------- -->
+    <section class="view" id="view-settings">
+
+      <div class="card">
+        <div class="card-head"><h3>Google Sheet</h3><span class="badge" id="connBadge">Demo</span></div>
+        <p class="muted small">
+          Apna Apps Script Web App URL daalein. Data seedha aapki Google Sheet me jayega.
+          Setup steps <b>SETUP.md</b> file me hain.
+        </p>
+        <label class="field">
+          <span>Web App URL</span>
+          <input id="apiUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">
+          <span>Password <em class="muted">(agar set kiya hai)</em></span>
+          <input id="apiPass" type="password" placeholder="••••" autocomplete="off">
+        </label>
+        <div class="row-actions">
+          <button class="btn primary" id="btnConnect">Connect</button>
+          <button class="btn ghost" id="btnSync">Sync now</button>
+        </div>
+        <p class="hint" id="connMsg"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Voice</h3></div>
+        <label class="field">
+          <span>Bolne ki bhasha</span>
+          <select id="langSel">
+            <option value="hi-IN">Hindi (हिन्दी)</option>
+            <option value="en-IN">English (India)</option>
+            <option value="en-US">English (US)</option>
+          </select>
+        </label>
+        <p class="hint">Hindi chunein to "चाय पर पचास रुपये" bhi chalega, Hinglish bhi.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Appearance</h3></div>
+        <div class="seg" id="themeSeg">
+          <button data-theme="light" class="on">Light</button>
+          <button data-theme="dark">Dark</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Data</h3></div>
+        <p class="muted small" id="dataStat">—</p>
+        <div class="row-actions">
+          <button class="btn ghost" id="btnExport">CSV download</button>
+          <button class="btn ghost danger" id="btnReset">Local cache clear</button>
+        </div>
+        <p class="hint">Sheet me data safe rehta hai. Cache clear karne se sirf phone ki copy hategi.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Kaise bolein</h3></div>
+        <ul class="examples">
+          <li>“chai pe pachas rupaye kharch”</li>
+          <li>“salary pandrah hazaar mili”</li>
+          <li>“kal auto ka tees rupaye”</li>
+          <li>“bijli ka bill 1200 bhara”</li>
+          <li>“upi se kirana 450”</li>
+          <li>“mummy ko do hazaar diye”</li>
+        </ul>
+      </div>
+
+      <p class="version">Hisaab v1.0 · data aapke Google Sheet me</p>
+    </section>
+
+  </main>
+
+  <!-- ================= NAV ================= -->
+  <nav class="bottomnav">
+    <button data-view="report" class="on">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>
+      <span>Report</span>
+    </button>
+    <button data-view="entries">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+      <span>Entries</span>
+    </button>
+    <button data-view="settings">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- ================= FAB ================= -->
+  <button class="fab" id="fab" aria-label="Voice se entry">
+    <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/>
+      <path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+    </svg>
+  </button>
+
+</div>
+
+<!-- ================= VOICE SHEET ================= -->
+<div class="sheet-wrap" id="sheetVoice" hidden>
+  <div class="backdrop" data-close="voice"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <h2>Bolein</h2>
+      <button class="icon-btn" data-close="voice" aria-label="Band karein">✕</button>
+    </div>
+
+    <div class="voice-body">
+      <button class="mic-big" id="micBig" aria-label="Sunna shuru karein">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/>
+          <path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+        </svg>
+        <span class="ring"></span>
+      </button>
+      <p class="voice-status" id="voiceStatus">Mic par tap karein</p>
+      <p class="voice-heard" id="voiceHeard"></p>
+
+      <div class="divider"><span>ya type karein</span></div>
+
+      <div class="cmd-row">
+        <input id="cmdInput" type="text" placeholder="chai pe 50 kharch" autocomplete="off">
+        <button class="btn primary" id="cmdGo">Samjho</button>
+      </div>
+      <div class="examples-row">
+        <button class="chip-eg" data-eg="chai pe pachas rupaye kharch">chai 50</button>
+        <button class="chip-eg" data-eg="salary pandrah hazaar mili">salary 15k</button>
+        <button class="chip-eg" data-eg="kal auto ka tees rupaye">auto 30</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= EDIT SHEET ================= -->
+<div class="sheet-wrap" id="sheetEdit" hidden>
+  <div class="backdrop" data-close="edit"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <h2 id="editTitle">Naya entry</h2>
+      <button class="icon-btn" data-close="edit" aria-label="Band karein">✕</button>
+    </div>
+
+    <div class="sheet-body">
+      <div class="seg big" id="typeSeg">
+        <button data-type="expense" class="on">Kharch</button>
+        <button data-type="income">Aamdani</button>
+      </div>
+
+      <div class="amount-field">
+        <span>₹</span>
+        <input id="fAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
+      </div>
+
+      <div class="field-block">
+        <span class="label">Category</span>
+        <div class="chips" id="catChips"></div>
+      </div>
+
+      <div class="row2">
+        <label class="field">
+          <span>Date</span>
+          <input id="fDate" type="date">
+        </label>
+        <div class="field-block">
+          <span class="label">Payment</span>
+          <div class="chips tight" id="payChips">
+            <button data-pay="cash">Cash</button>
+            <button data-pay="upi">UPI</button>
+            <button data-pay="card">Card</button>
+            <button data-pay="bank">Bank</button>
+          </div>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Note</span>
+        <input id="fNote" type="text" maxlength="80" placeholder="jaise: chai, auto, salary">
+      </label>
+
+      <p class="hint" id="editHint"></p>
+
+      <div class="sheet-actions">
+        <button class="btn ghost danger" id="editDelete" hidden>Delete</button>
+        <button class="btn primary wide" id="editSave">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOAST ================= -->
+<div class="toast" id="toast" hidden><span id="toastMsg"></span></div>
+
+<script src="parser.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
