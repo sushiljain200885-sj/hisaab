@@ -142,13 +142,17 @@
     var pill = $('#connPill');
     pill.setAttribute('data-state', state);
     $('#connText').textContent = text || {
-      ok: 'Sheet', demo: 'Demo', syncing: 'Sync…', offline: 'Offline', auth: 'Password'
+      ok: 'Sheet', demo: 'Demo', syncing: 'Sync…', offline: 'Offline', auth: 'Password', locked: 'Locked'
     }[state];
 
     var badge = $('#connBadge');
     if (badge) {
-      badge.className = 'badge ' + (state === 'ok' ? 'ok' : (state === 'offline' || state === 'auth') ? 'err' : state === 'syncing' ? 'warn' : '');
-      badge.textContent = state === 'ok' ? 'Connected' : state === 'offline' ? 'Offline' : state === 'auth' ? 'Password' : state === 'syncing' ? 'Sync…' : 'Demo';
+      badge.className = 'badge ' + (state === 'ok' ? 'ok' : (state === 'offline' || state === 'auth') ? 'err' : (state === 'syncing' || state === 'locked') ? 'warn' : '');
+      badge.textContent = state === 'ok' ? 'Connected'
+        : state === 'offline' ? 'Offline'
+        : state === 'auth' ? 'Password'
+        : state === 'locked' ? 'Locked'
+        : state === 'syncing' ? 'Sync…' : 'Demo';
     }
 
     var banner = $('#demoBanner');
@@ -226,6 +230,11 @@
     opts = opts || {};
     if (!API.isConfigured()) { setConn('demo'); return Promise.resolve(); }
     if (syncBusy) return Promise.resolve();
+    if (State.cfg.needAuth && !opts.manual) {
+      // password galat/lock hai — bina wajah request bhej kar koshishein mat badhao
+      setConn(State.cfg.needAuth === 'locked' ? 'locked' : 'auth');
+      return Promise.resolve();
+    }
     syncBusy = true;
     setConn('syncing');
 
@@ -258,10 +267,17 @@
         }
       })
       .catch(function (err) {
-        if (err && err.code === 'auth') setConn('auth');
-        else setConn('offline');
+        if (err && (err.code === 'auth' || err.code === 'locked')) {
+          State.cfg.needAuth = err.code;
+          saveCfg();
+          setConn(err.code === 'locked' ? 'locked' : 'auth');
+        } else {
+          setConn('offline');
+        }
         if (opts.manual) {
-          toast(err.code === 'auth' ? 'Password galat hai — dobara connect karein' : (err.message || 'Sync nahi hua'));
+          toast(err.code === 'auth' ? 'Password galat hai — Settings me sahi password daalein'
+            : err.code === 'locked' ? (err.message || 'Thodi der baad try karein')
+            : (err.message || 'Sync nahi hua'));
         }
       })
       .then(function () { syncBusy = false; });
@@ -1035,6 +1051,7 @@
         if (!res || res.ok === false) throw new Error((res && (res.message || res.error)) || 'Connect nahi hua');
         State.cfg.apiUrl = url;
         State.cfg.token = res.token || API.token || '';
+        State.cfg.needAuth = false;
         State.cfg.seeded = true;
         saveCfg();
         $('#connMsg').textContent = res.open ? 'Connected (koi password set nahi hai).' : 'Connected ✓';
@@ -1047,9 +1064,15 @@
         }
       })
       .catch(function (err) {
-        API.setConfig('', '');
+        API.setConfig(State.cfg.apiUrl, State.cfg.token);
         $('#connMsg').textContent = err.message || 'Connect nahi hua';
-        setConn('demo');
+        if (err.code === 'auth' || err.code === 'locked') {
+          State.cfg.needAuth = err.code;
+          saveCfg();
+          setConn(err.code === 'locked' ? 'locked' : 'auth');
+        } else {
+          setConn('demo');
+        }
       })
       .then(function () { $('#btnConnect').disabled = false; });
   }
@@ -1318,7 +1341,8 @@
     render();
 
     if (API.isConfigured()) {
-      sync();
+      if (State.cfg.needAuth) setConn(State.cfg.needAuth === 'locked' ? 'locked' : 'auth');
+      else sync();
     } else {
       setConn('demo');
     }

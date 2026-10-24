@@ -103,6 +103,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 .conn-pill[data-state="auth"] .dot { background: #F59E0B; }
 .conn-pill[data-state="auth"] { color: #B45309; }
 [data-theme="dark"] .conn-pill[data-state="auth"] { color: #FBBF24; }
+.conn-pill[data-state="locked"] .dot { background: #F59E0B; }
+.conn-pill[data-state="locked"] { color: #B45309; }
+[data-theme="dark"] .conn-pill[data-state="locked"] { color: #FBBF24; }
 .conn-pill[data-state="demo"] .dot { background: #94A3B8; }
 
 @keyframes blink { 50% { opacity: .25; } }

@@ -1,7 +1,7 @@
 /* Hisaab — service worker (offline shell) */
-var CACHE = 'hisaab-v6';
+var CACHE = 'hisaab-v7';
 
-var V = '?v=6';
+var V = '?v=7';
 
 var ASSETS = [
   './',

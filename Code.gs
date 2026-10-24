@@ -245,7 +245,8 @@ function authenticate_(body, e) {
   if (until) {
     return {
       ok: false,
-      error: 'Bahut zyada galat koshishein. ' +
+      error: 'locked',
+      message: 'Bahut zyada galat koshishein. ' +
         Math.max(1, Math.ceil((until - Date.now()) / 60000)) + ' minute baad try karein.'
     };
   }
@@ -256,7 +257,18 @@ function authenticate_(body, e) {
   if (tokenOk_(tok)) return { ok: true, token: tok };
 
   var given = body && body.password != null ? String(body.password) : '';
-  if (given && given === appPassword_()) {
+
+  // Password hi nahi bheja (sirf purana/expired token) — ise galat koshish na ginein,
+  // warna app kholte hi 6 koshishon me lock lag jata hai.
+  if (!given) {
+    return {
+      ok: false,
+      error: 'unauthorised',
+      message: 'Password chahiye. App me Settings → Password daal kar Connect karein.'
+    };
+  }
+
+  if (given === appPassword_()) {
     clearFails_();
     return { ok: true, token: issueToken_() };
   }
@@ -264,7 +276,8 @@ function authenticate_(body, e) {
   var justLocked = registerFail_();
   return {
     ok: false,
-    error: justLocked
+    error: justLocked ? 'locked' : 'unauthorised',
+    message: justLocked
       ? 'Bahut zyada galat koshishein. 15 minute baad try karein.'
       : 'Password galat hai.'
   };
@@ -405,15 +418,12 @@ function setupSheet() {
   Logger.log('Udhaar sheet ready: ' + lsh.getName() + ' (' + Math.max(0, lsh.getLastRow() - 1) + ' entries)');
 }
 
-function setupPassword() {
-  var NEW_PASSWORD = 'CHANGE-THIS-PASSWORD';
-  props_().setProperty('APP_PASSWORD', NEW_PASSWORD);
-  Logger.log('APP_PASSWORD set ho gaya. Ab is function ka password badal dein ya function delete kar dein.');
-}
 
-function removePassword() {
-  props_().deleteProperty('APP_PASSWORD');
-  Logger.log('Password hata diya — app ab bina password khulega.');
+
+// "Bahut zyada galat koshishein" wala lock turant hata deta hai (15 min wait nahi)
+function resetLock() {
+  clearFails_();
+  Logger.log('Lock clear ho gaya. Ab app me Settings → Password daal kar Connect karein.');
 }
 
 function info() {

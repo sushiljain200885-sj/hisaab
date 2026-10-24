@@ -42,6 +42,11 @@
           throw new Error('Sheet se galat jawab aaya (URL sahi hai?)');
         }
         if (data && data.token) API.token = data.token;
+        if (data && data.error === 'locked') {
+          var errLock = new Error(data.message || 'Thodi der baad try karein');
+          errLock.code = 'locked';
+          throw errLock;
+        }
         if (data && (data.error === 'unauthorised' || data.ok === false && /password/i.test(String(data.message || data.error)))) {
           var err = new Error(data.message || 'Password galat hai');
           err.code = 'auth';
