@@ -47,6 +47,11 @@
           err.code = 'auth';
           throw err;
         }
+        if (data && data.ok === false) {
+          var err2 = new Error(data.message || data.error || 'Sheet ne error diya');
+          err2.code = data.error || 'error';
+          throw err2;
+        }
         return data;
       });
     },
@@ -69,6 +74,22 @@
 
     remove: function (id) {
       return API.call('delete', { id: id });
+    },
+
+    loans: function () {
+      return API.call('loanList');
+    },
+
+    addLoan: function (loan) {
+      return API.call('loanAdd', { loan: loan });
+    },
+
+    updateLoan: function (loan) {
+      return API.call('loanUpdate', { loan: loan });
+    },
+
+    removeLoan: function (id) {
+      return API.call('loanDelete', { id: id });
     },
 
     ping: function () {

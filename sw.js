@@ -1,13 +1,15 @@
 /* Hisaab — service worker (offline shell) */
-var CACHE = 'hisaab-v2';
+var CACHE = 'hisaab-v6';
+
+var V = '?v=6';
 
 var ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
-  './parser.js',
-  './api.js',
+  './app.js' + V,
+  './parser.js' + V,
+  './api.js' + V,
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -43,7 +45,7 @@ self.addEventListener('fetch', function (e) {
 
   e.respondWith(
     // network-first: online par hamesha naya version, offline par cache
-    fetch(req).then(function (res) {
+    fetch(req, { cache: 'reload' }).then(function (res) {
       if (res && res.status === 200 && res.type === 'basic') {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(req, copy); });

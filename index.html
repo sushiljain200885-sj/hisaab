@@ -118,6 +118,46 @@
       <p class="empty" id="txEmpty" hidden>Kuch nahi mila.</p>
     </section>
 
+    <!-- ---------- UDHAAR ---------- -->
+    <section class="view" id="view-udhaar">
+
+      <div class="cards">
+        <div class="stat income">
+          <span class="stat-label">Lena hai</span>
+          <strong class="stat-value" id="udhaarReceive">₹0</strong>
+        </div>
+        <div class="stat expense">
+          <span class="stat-label">Dena hai</span>
+          <strong class="stat-value" id="udhaarPay">₹0</strong>
+        </div>
+      </div>
+
+      <div class="card" id="peopleCard">
+        <div class="card-head">
+          <h3>Log</h3>
+          <button class="btn ghost sm" id="newLoanBtn">+ Naya</button>
+        </div>
+        <ul class="person-list" id="personList"></ul>
+        <p class="empty" id="personEmpty" hidden>Abhi koi udhaar entry nahi. “+ Naya” dabayein ya mic se bolein — <b>“ramesh ko 500 udhaar diye”</b>.</p>
+      </div>
+
+      <div class="card" id="personCard" hidden>
+        <div class="card-head">
+          <button class="icon-btn" id="personBack" aria-label="Wapas">‹</button>
+          <h3 id="personName">—</h3>
+          <button class="btn ghost sm" id="personAdd">+ Naya</button>
+        </div>
+        <div class="person-total" id="personTotal"></div>
+        <ul class="tx-list" id="personTx"></ul>
+      </div>
+
+      <p class="hint" id="loanApiHint" hidden>
+        Sheet ka code purana hai. Udhaar save karne ke liye Apps Script me naya <b>Code.gs</b> paste karke
+        <b>Manage deployments → naya version</b> deploy karein (steps SETUP.md me).
+      </p>
+
+    </section>
+
     <!-- ---------- SETTINGS ---------- -->
     <section class="view" id="view-settings">
 
@@ -199,6 +239,10 @@
     <button data-view="entries">
       <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
       <span>Entries</span>
+    </button>
+    <button data-view="udhaar">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c0-3.1 2.7-5.2 6-5.2s6 2.1 6 5.2"/><circle cx="17.2" cy="9.6" r="2.4"/><path d="M17.2 14.7c2.3 0 3.8 1.7 3.8 4.2"/></svg>
+      <span>Udhaar</span>
     </button>
     <button data-view="settings">
       <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
@@ -309,11 +353,58 @@
   </div>
 </div>
 
+<!-- ================= LOAN (UDHAAR) SHEET ================= -->
+<div class="sheet-wrap" id="sheetLoan" hidden>
+  <div class="backdrop" data-close="loan"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <h2 id="loanTitle">Naya udhaar</h2>
+      <button class="icon-btn" data-close="loan" aria-label="Band karein">✕</button>
+    </div>
+
+    <div class="sheet-body">
+      <label class="field">
+        <span>Kiska / kisse</span>
+        <input id="lPerson" list="personNames" type="text" placeholder="jaise: Ramesh" autocomplete="off" maxlength="40">
+        <datalist id="personNames"></datalist>
+      </label>
+
+      <div class="field-block">
+        <span class="label">Kya hua</span>
+        <div class="chips" id="loanTypeChips">
+          <button type="button" data-lt="given">Udhaar diya</button>
+          <button type="button" data-lt="taken">Udhaar liya</button>
+          <button type="button" data-lt="received">Wapas mila</button>
+          <button type="button" data-lt="paid">Wapas kiya</button>
+        </div>
+      </div>
+
+      <div class="amount-field">
+        <span>₹</span>
+        <input id="lAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
+      </div>
+
+      <div class="row2">
+        <label class="field"><span>Date</span><input id="lDate" type="date"></label>
+        <label class="field"><span>Note</span><input id="lNote" type="text" maxlength="80" placeholder="jaise: shaadi"></label>
+      </div>
+
+      <p class="hint" id="loanHint"></p>
+
+      <div class="sheet-actions">
+        <button class="btn ghost danger" id="loanDelete" hidden>Delete</button>
+        <button class="btn primary wide" id="loanSave">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ================= TOAST ================= -->
 <div class="toast" id="toast" hidden><span id="toastMsg"></span></div>
 
-<script src="parser.js"></script>
-<script src="api.js"></script>
-<script src="app.js"></script>
+<script src="parser.js?v=6"></script>
+<script src="api.js?v=6"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

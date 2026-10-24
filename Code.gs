@@ -16,6 +16,9 @@
 var SHEET_NAME = 'ENTRIES';
 var HEADERS = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Note', 'Payment', 'CreatedAt'];
 
+var LOAN_SHEET = 'UDHAAR';
+var LOAN_HEADERS = ['ID', 'Date', 'Person', 'Type', 'Amount', 'Note', 'CreatedAt'];
+
 var TOKEN_TTL = 21600;   // 6 ghante
 var MAX_TRIES = 6;       // galat password ki limit
 var LOCK_TTL = 900;      // 15 minute lockout
@@ -128,6 +131,72 @@ function rowFor_(entry) {
     String(entry.note || ''),
     String(entry.payment || 'cash'),
     String(entry.createdAt || new Date().toISOString())
+  ];
+}
+
+/* ----------------------------- udhaar khata ----------------------------- */
+
+function getLoanSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(LOAN_SHEET);
+
+  if (!sh) {
+    sh = ss.insertSheet(LOAN_SHEET);
+    sh.getRange(1, 1, 1, LOAN_HEADERS.length).setValues([LOAN_HEADERS]);
+    sh.getRange(1, 1, 1, LOAN_HEADERS.length)
+      .setFontWeight('bold')
+      .setFontColor('#FFFFFF')
+      .setBackground('#0F766E');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(1, 200);
+    sh.setColumnWidth(2, 100);
+    sh.setColumnWidth(3, 150);
+    sh.setColumnWidth(4, 100);
+    sh.setColumnWidth(5, 100);
+    sh.setColumnWidth(6, 240);
+  }
+
+  sh.getRange('B:B').setNumberFormat('@');
+  sh.getRange('G:G').setNumberFormat('@');
+  return sh;
+}
+
+function readLoans_() {
+  var sh = getLoanSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  var values = sh.getRange(2, 1, last - 1, LOAN_HEADERS.length).getValues();
+  var out = [];
+
+  for (var i = 0; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    out.push({
+      id: String(r[0]),
+      date: dateStr_(r[1], tz),
+      person: String(r[2] || ''),
+      type: String(r[3] || 'given'),
+      amount: Number(r[4]) || 0,
+      note: String(r[5] || ''),
+      createdAt: dateStr_(r[6], tz, true)
+    });
+  }
+  return out;
+}
+
+function loanRowFor_(l) {
+  var t = String(l.type || 'given');
+  if (['given', 'taken', 'received', 'paid'].indexOf(t) < 0) t = 'given';
+  return [
+    String(l.id || Utilities.getUuid()),
+    String(l.date || todayStr_()).slice(0, 10),
+    String(l.person || '').slice(0, 60),
+    t,
+    Number(l.amount) || 0,
+    String(l.note || ''),
+    String(l.createdAt || new Date().toISOString())
   ];
 }
 
@@ -255,6 +324,36 @@ function doPost(e) {
       return json_({ ok: true, entries: readAll_() });
     }
 
+    if (action === 'loanList') {
+      return json_({ ok: true, loans: readLoans_() });
+    }
+
+    if (action === 'loanAdd') {
+      var lrow = loanRowFor_(data.loan || {});
+      getLoanSheet_().appendRow(lrow);
+      SpreadsheetApp.flush();
+      return json_({ ok: true, id: lrow[0] });
+    }
+
+    if (action === 'loanUpdate') {
+      var loan = data.loan || {};
+      var lsh = getLoanSheet_();
+      var lr = findRow_(lsh, loan.id);
+      if (!lr) return json_({ ok: false, error: 'not-found', message: 'Udhaar entry nahi mili' });
+      lsh.getRange(lr, 1, 1, LOAN_HEADERS.length).setValues([loanRowFor_(loan)]);
+      SpreadsheetApp.flush();
+      return json_({ ok: true });
+    }
+
+    if (action === 'loanDelete') {
+      var lsh2 = getLoanSheet_();
+      var lr2 = findRow_(lsh2, data.id);
+      if (!lr2) return json_({ ok: false, error: 'not-found', message: 'Udhaar entry nahi mili' });
+      lsh2.deleteRow(lr2);
+      SpreadsheetApp.flush();
+      return json_({ ok: true });
+    }
+
     if (action === 'add') {
       var row = rowFor_(data.entry || {});
       sh.appendRow(row);
@@ -301,7 +400,9 @@ function doPost(e) {
 
 function setupSheet() {
   var sh = getSheet_();
+  var lsh = getLoanSheet_();
   Logger.log('Sheet ready: ' + sh.getName() + ' (' + Math.max(0, sh.getLastRow() - 1) + ' entries)');
+  Logger.log('Udhaar sheet ready: ' + lsh.getName() + ' (' + Math.max(0, lsh.getLastRow() - 1) + ' entries)');
 }
 
 function setupPassword() {

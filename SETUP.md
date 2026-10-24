@@ -1,7 +1,7 @@
 # Hisaab — setup guide
 
-Voice se kharch/aamdani likhne wala app. Data aapki **Google Sheet** me rehta hai,
-app sirf interface hai.
+Voice se kharch/aamdani likhne wala app, plus **udhaar khata** (kisko kitna dena/lena hai).
+Data aapki **Google Sheet** me rehta hai, app sirf interface hai.
 
 ---
 
@@ -76,6 +76,24 @@ Ab icon se app fullscreen khulegi.
 
 ---
 
+## 6. Udhaar khata — Sheet ka code update karein
+
+Udhaar (lending/borrowing) feature ke liye Sheet me ek naya `UDHAAR` tab aur 4 naye
+actions chahiye. **Agar aapne app pehle se deploy kiya hai** to bas itna karein:
+
+1. Apps Script kholein (Sheet → Extensions → Apps Script).
+2. Puraana code select karke delete karein, aur `Code.gs` ki nayi copy paste karein.
+3. **Save** (Ctrl+S).
+4. **Deploy → Manage deployments** → apni deployment ke saamne **✏️ Edit**.
+5. **Version** dropdown → **New version** → **Deploy**.
+   (URL wahi rahega — app me dobara paste karne ki zaroorat nahi.)
+6. App kholein → Settings → **Sync now**. `UDHAAR` tab apne aap ban jayega.
+
+> Purana code rehne par bhi app chalti rahegi — sirf udhaar save nahi hoga aur
+> Udhaar tab me ek hint dikhega ("Sheet ka code purana hai"). Entries normal chalte rahenge.
+
+---
+
 ## Kaise bolein
 
 Mic (laal gol button) dabayein aur bolein:
@@ -96,6 +114,21 @@ sab wahin badal sakte hain. Galat samjha ho to 2 second me theek kar dein.
 
 Voice na chale to wahin type bhi kar sakte hain, ya **+** button se manual entry.
 
+### Udhaar ke liye (Udhaar tab khula ho)
+
+| Bolein | Banega |
+|---|---|
+| "ramesh ko 500 udhaar diye" | Ramesh ko ₹500 diya (lena hai) |
+| "suresh se 1000 liye" | Suresh se ₹1000 liya (dena hai) |
+| "mohan se 200 wapas mile" | Mohan se ₹200 wapas mila |
+| "shyam ko 1000 wapas diye" | Shyam ko ₹1000 wapas kiya |
+| "papa ko 2000 diye" | Papa ko ₹2000 udhaar diya |
+
+Udhaar tab me mic dabane par examples bhi badal jate hain, aur entry seedha
+udhaar form me khulti hai. Kisi bhi doosre tab se bolein to wahi baat kharch
+ki entry ban jayegi — isliye udhaar bolte waqt Udhaar tab khula rakhein
+(ya "udhaar"/"karz" shabd bolein).
+
 ---
 
 ## Sheet ka structure
@@ -109,6 +142,15 @@ Voice na chale to wahin type bhi kar sakte hain, ya **+** button se manual entry
 Sheet me direct edit/delete kar sakte hain — app next sync par wahi dikhayega.
 Bas **ID column mat chhediye** (usee se row pehchani jaati hai).
 
+`UDHAAR` tab me:
+
+| A | B | C | D | E | F | G |
+|---|---|---|---|---|---|---|
+| ID | Date | Person | Type | Amount | Note | CreatedAt |
+
+`Type` in 4 me se ek hota hai: `given` (maine diya), `taken` (maine liya),
+`received` (wapas mila), `paid` (wapas kiya).
+
 ---
 
 ## Reports
@@ -116,6 +158,8 @@ Bas **ID column mat chhediye** (usee se row pehchani jaati hai).
 - **Report tab** — mahine ki aamdani, kharch, bachat; roz ka graph; category-wise pie.
 - Category row par tap → us category ki saari entry.
 - **Entries tab** — search, type filter, kisi bhi entry par tap karke edit/delete.
+- **Udhaar tab** — "Lena hai" / "Dena hai" ka total, har bande ka hisaab.
+  Kisi naam par tap → uski puri ledger (har transaction ke baad ka baaki).
 - **Settings → CSV download** — us mahine ka CSV (Excel me khulega).
 
 ---
@@ -129,6 +173,7 @@ Bas **ID column mat chhediye** (usee se row pehchani jaati hai).
 | Mic nahi chalta | HTTPS link se kholein (Netlify/GitHub Pages). Chrome me mic permission allow karein. |
 | Voice samajh nahi raha | Settings → bhasha **Hindi** ya **English (India)** try karein. Dheere bolein. |
 | Entry Sheet me nahi dikh rahi | Settings → **Sync now**. Upar pill "Offline" ho to internet check karein. |
+| Udhaar save nahi ho raha / "Sheet ka code purana hai" | Section 6 follow karein — naya `Code.gs` paste karke **New version** deploy karein. |
 | Data purana lag raha hai | Pull-to-refresh jaisa: Settings → Sync now. |
 
 ---

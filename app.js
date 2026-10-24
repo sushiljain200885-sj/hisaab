@@ -41,19 +41,23 @@
   }
 
   /* ---------------- state ---------------- */
-  var LS = { cfg: 'hisaab.cfg.v1', entries: 'hisaab.entries.v1', queue: 'hisaab.queue.v1' };
+  var LS = { cfg: 'hisaab.cfg.v1', entries: 'hisaab.entries.v1', queue: 'hisaab.queue.v1', loans: 'hisaab.loans.v1' };
 
   var State = {
     cfg: { apiUrl: '', token: '', lang: 'hi-IN', theme: 'light', seeded: false },
     entries: [],
+    loans: [],
     queue: [],
+    loanApiOk: true,
     month: { y: new Date().getFullYear(), m: new Date().getMonth() },
     view: 'report',
     catType: 'expense',
     search: '',
     filterType: '',
     filterCat: '',
+    person: '',
     edit: null,
+    loanEdit: null,
     conn: 'demo'
   };
 
@@ -70,11 +74,16 @@
       var q = JSON.parse(localStorage.getItem(LS.queue) || 'null');
       if (Array.isArray(q)) State.queue = q;
     } catch (e) {}
+    try {
+      var l1 = JSON.parse(localStorage.getItem(LS.loans) || 'null');
+      if (Array.isArray(l1)) State.loans = l1;
+    } catch (e) {}
   }
 
   function saveCfg() { try { localStorage.setItem(LS.cfg, JSON.stringify(State.cfg)); } catch (e) {} }
   function saveEntries() { try { localStorage.setItem(LS.entries, JSON.stringify(State.entries)); } catch (e) {} }
   function saveQueue() { try { localStorage.setItem(LS.queue, JSON.stringify(State.queue)); } catch (e) {} }
+  function saveLoans() { try { localStorage.setItem(LS.loans, JSON.stringify(State.loans)); } catch (e) {} }
 
   /* ---------------- data helpers ---------------- */
   function normalizeEntry(e) {
@@ -88,6 +97,25 @@
       payment: String(e.payment || 'cash'),
       createdAt: String(e.createdAt || new Date().toISOString())
     };
+  }
+
+  function normalizeLoan(l) {
+    var t = String(l.type || 'given');
+    if (['given', 'taken', 'received', 'paid'].indexOf(t) < 0) t = 'given';
+    return {
+      id: String(l.id || newId()),
+      date: String(l.date || todayISO()).slice(0, 10),
+      person: String(l.person || '').trim(),
+      type: t,
+      amount: Math.round((Number(l.amount) || 0) * 100) / 100,
+      note: String(l.note || ''),
+      createdAt: String(l.createdAt || new Date().toISOString())
+    };
+  }
+
+  function indexIn(list, id) {
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return i;
+    return -1;
   }
 
   function monthKey() { return State.month.y + '-' + pad(State.month.m + 1); }
@@ -114,13 +142,13 @@
     var pill = $('#connPill');
     pill.setAttribute('data-state', state);
     $('#connText').textContent = text || {
-      ok: 'Sheet', demo: 'Demo', syncing: 'Sync…', offline: 'Offline'
+      ok: 'Sheet', demo: 'Demo', syncing: 'Sync…', offline: 'Offline', auth: 'Password'
     }[state];
 
     var badge = $('#connBadge');
     if (badge) {
-      badge.className = 'badge ' + (state === 'ok' ? 'ok' : state === 'offline' ? 'err' : state === 'syncing' ? 'warn' : '');
-      badge.textContent = state === 'ok' ? 'Connected' : state === 'offline' ? 'Offline' : state === 'syncing' ? 'Sync…' : 'Demo';
+      badge.className = 'badge ' + (state === 'ok' ? 'ok' : (state === 'offline' || state === 'auth') ? 'err' : state === 'syncing' ? 'warn' : '');
+      badge.textContent = state === 'ok' ? 'Connected' : state === 'offline' ? 'Offline' : state === 'auth' ? 'Password' : state === 'syncing' ? 'Sync…' : 'Demo';
     }
 
     var banner = $('#demoBanner');
@@ -132,37 +160,63 @@
   function updateDataStat() {
     var el = $('#dataStat');
     if (!el) return;
-    el.textContent = State.entries.length + ' entry cache me' +
+    el.textContent = State.entries.length + ' entry' +
+      (State.loans.length ? ' · ' + State.loans.length + ' udhaar' : '') + ' cache me' +
       (State.queue.length ? ' · ' + State.queue.length + ' pending' : '') +
       (State.cfg.apiUrl ? '' : ' · Sheet connect nahi hai');
   }
 
   function applyPending() {
     State.queue.forEach(function (op) {
+      var isLoan = op.entity === 'loan';
+      var list = isLoan ? State.loans : State.entries;
+      var norm = isLoan ? normalizeLoan : normalizeEntry;
+
       if (op.op === 'add') {
-        if (idxOf(op.data.id) < 0) State.entries.push(normalizeEntry(op.data));
+        if (indexIn(list, op.data.id) < 0) list.push(norm(op.data));
       } else if (op.op === 'update') {
-        var i = idxOf(op.data.id);
-        if (i >= 0) State.entries[i] = normalizeEntry(op.data);
+        var i = indexIn(list, op.data.id);
+        if (i >= 0) list[i] = norm(op.data);
       } else if (op.op === 'delete') {
-        var j = idxOf(op.id);
-        if (j >= 0) State.entries.splice(j, 1);
+        var j = indexIn(list, op.id);
+        if (j >= 0) list.splice(j, 1);
       }
     });
   }
 
   function flushQueue() {
     if (!State.queue.length) return Promise.resolve();
-    var op = State.queue[0];
+
+    // Sheet ka code purana ho (udhaar support na ho) to loan ops rok kar
+    // baaki entries sync karte rahenge.
+    var idx = -1;
+    for (var i = 0; i < State.queue.length; i++) {
+      if (State.queue[i].entity === 'loan' && !State.loanApiOk) continue;
+      idx = i;
+      break;
+    }
+    if (idx < 0) return Promise.resolve();
+
+    var op = State.queue[idx];
+    var isLoan = op.entity === 'loan';
     var p;
-    if (op.op === 'add') p = API.add(op.data);
-    else if (op.op === 'update') p = API.update(op.data);
-    else p = API.remove(op.id);
+
+    if (op.op === 'add') p = isLoan ? API.addLoan(op.data) : API.add(op.data);
+    else if (op.op === 'update') p = isLoan ? API.updateLoan(op.data) : API.update(op.data);
+    else p = isLoan ? API.removeLoan(op.id) : API.remove(op.id);
 
     return p.then(function () {
-      State.queue.shift();
+      var at = State.queue.indexOf(op);
+      if (at >= 0) State.queue.splice(at, 1);
       saveQueue();
       return flushQueue();
+    }).catch(function (err) {
+      if (isLoan && (err.code === 'unknown-action' || /unknown-action/i.test(String(err.message)))) {
+        State.loanApiOk = false;
+        renderUdhaar();
+        return flushQueue();
+      }
+      throw err;
     });
   }
 
@@ -176,18 +230,36 @@
     setConn('syncing');
 
     return flushQueue()
-      .then(function () { return API.list(); })
+      .then(function () {
+        return Promise.all([
+          API.list(),
+          API.loans().catch(function (e) {
+            if (e && e.code === 'auth') throw e;
+            return { ok: false };
+          })
+        ]);
+      })
       .then(function (res) {
-        if (!res || res.ok === false) throw new Error((res && (res.message || res.error)) || 'Sync fail');
-        var list = (res.entries || []).map(normalizeEntry);
-        State.entries = list;
+        var entriesRes = res[0], loansRes = res[1];
+        if (!entriesRes || entriesRes.ok === false) {
+          throw new Error((entriesRes && (entriesRes.message || entriesRes.error)) || 'Sync fail');
+        }
+        State.entries = (entriesRes.entries || []).map(normalizeEntry);
+        State.loanApiOk = !!(loansRes && loansRes.ok);
+        if (State.loanApiOk) State.loans = (loansRes.loans || []).map(normalizeLoan);
         applyPending();
         saveEntries();
+        saveLoans();
         render();
         setConn('ok');
+        // Sheet me udhaar support aa gaya aur queue me loan ops bache hain
+        if (State.loanApiOk && State.queue.length) {
+          setTimeout(function () { sync(); }, 600);
+        }
       })
       .catch(function (err) {
-        setConn(navigator.onLine ? 'offline' : 'offline', navigator.onLine ? 'Offline' : 'Offline');
+        if (err && err.code === 'auth') setConn('auth');
+        else setConn('offline');
         if (opts.manual) {
           toast(err.code === 'auth' ? 'Password galat hai — dobara connect karein' : (err.message || 'Sync nahi hua'));
         }
@@ -225,6 +297,36 @@
     if (API.isConfigured()) sync();
   }
 
+  /* ---------------- udhaar commit ---------------- */
+  function commitLoan(loan, isNew) {
+    loan = normalizeLoan(loan);
+    if (isNew) {
+      State.loans.unshift(loan);
+      State.queue.push({ entity: 'loan', op: 'add', data: loan });
+    } else {
+      var i = indexIn(State.loans, loan.id);
+      if (i >= 0) State.loans[i] = loan;
+      State.queue.push({ entity: 'loan', op: 'update', data: loan });
+    }
+    saveLoans();
+    saveQueue();
+    render();
+    toast(isNew ? 'Udhaar save ho gaya ✓' : 'Udhaar update ho gaya ✓');
+    if (API.isConfigured()) sync();
+  }
+
+  function removeLoanEntry(id) {
+    var i = indexIn(State.loans, id);
+    if (i < 0) return;
+    State.loans.splice(i, 1);
+    State.queue.push({ entity: 'loan', op: 'delete', id: id });
+    saveLoans();
+    saveQueue();
+    render();
+    toast('Udhaar entry delete ho gayi');
+    if (API.isConfigured()) sync();
+  }
+
   /* ---------------- rendering ---------------- */
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -236,6 +338,7 @@
     renderHeader();
     renderReport();
     renderEntries();
+    renderUdhaar();
     updateDataStat();
   }
 
@@ -432,6 +535,145 @@
     }
   }
 
+  /* ---------------- udhaar rendering ---------------- */
+  function loanDelta(l) {
+    var a = Number(l.amount) || 0;
+    if (l.type === 'given') return a;
+    if (l.type === 'received') return -a;
+    if (l.type === 'taken') return -a;
+    if (l.type === 'paid') return a;
+    return 0;
+  }
+
+  function personKey(l) {
+    return l.person && l.person.trim() ? l.person.trim() : '(bina naam)';
+  }
+
+  function personMap() {
+    var map = {};
+    State.loans.forEach(function (l) {
+      var k = personKey(l);
+      if (!map[k]) map[k] = { person: k, net: 0, count: 0, last: '' };
+      map[k].net += loanDelta(l);
+      map[k].count++;
+      if (l.date > map[k].last) map[k].last = l.date;
+    });
+    return map;
+  }
+
+  function shortDate(d) {
+    if (!d) return '';
+    var dt = new Date(d + 'T00:00:00');
+    if (isNaN(dt.getTime())) return d;
+    return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  }
+
+  function renderPersonNames() {
+    var dl = $('#personNames');
+    if (!dl) return;
+    var map = personMap();
+    dl.innerHTML = Object.keys(map).map(function (k) {
+      return '<option value="' + esc(k) + '"></option>';
+    }).join('');
+  }
+
+  function renderUdhaar() {
+    var map = personMap();
+    var people = Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return Math.abs(b.net) - Math.abs(a.net); });
+
+    var recv = 0, pay = 0;
+    people.forEach(function (p) {
+      if (p.net > 0) recv += p.net;
+      else pay += -p.net;
+    });
+
+    $('#udhaarReceive').textContent = inr(recv);
+    $('#udhaarPay').textContent = inr(pay);
+    $('#personEmpty').hidden = people.length > 0;
+    $('#loanApiHint').hidden = !(API.isConfigured() && !State.loanApiOk);
+
+    $('#personList').innerHTML = people.map(function (p) {
+      var initial = (p.person || '?').charAt(0).toUpperCase();
+      var cls = p.net > 0 ? 'in' : p.net < 0 ? 'out' : 'zero';
+      var lbl = p.net > 0 ? 'Lena' : p.net < 0 ? 'Dena' : 'Barabar';
+      var amt = p.net !== 0 ? inr(Math.abs(p.net)) : '';
+      return '<li><button class="person-row" data-person="' + esc(p.person) + '">' +
+        '<span class="avatar">' + esc(initial) + '</span>' +
+        '<span class="p-mid"><span class="p-name">' + esc(p.person) + '</span>' +
+        '<span class="p-sub">' + p.count + ' entry' + (p.last ? ' · ' + shortDate(p.last) : '') + '</span></span>' +
+        '<span class="p-amt ' + cls + '"><span class="lbl">' + lbl + '</span>' + amt + '</span>' +
+        '</button></li>';
+    }).join('');
+
+    if (State.person && !map[State.person]) {
+      State.person = '';
+      $('#peopleCard').hidden = false;
+      $('#personCard').hidden = true;
+    }
+
+    if (State.person) renderPerson();
+    renderPersonNames();
+  }
+
+  var LOAN_LABELS = { given: 'Udhaar diya', taken: 'Udhaar liya', received: 'Wapas mila', paid: 'Wapas kiya' };
+  var LOAN_ARROW = { given: '→', taken: '←', received: '←', paid: '→' };
+  var LOAN_OUT = { given: true, paid: true };
+
+  function renderPerson() {
+    var name = State.person;
+    if (!name) return;
+    $('#personName').textContent = name;
+
+    var list = State.loans.filter(function (l) { return personKey(l) === name; });
+    list.sort(function (a, b) {
+      return a.date === b.date
+        ? String(a.createdAt).localeCompare(String(b.createdAt))
+        : String(a.date).localeCompare(String(b.date));
+    });
+
+    var bal = 0;
+    var rows = list.map(function (l) { bal += loanDelta(l); return { l: l, bal: bal }; });
+    var net = bal;
+
+    if (net === 0) {
+      $('#personTotal').innerHTML = '<strong>₹0</strong><span>hisaab barabar hai</span>';
+    } else {
+      $('#personTotal').innerHTML = '<strong class="' + (net > 0 ? 'in' : 'out') + '">' + inr(Math.abs(net)) + '</strong>' +
+        '<span>' + (net > 0 ? 'lena hai' : 'dena hai') + '</span>';
+    }
+
+    $('#personTx').innerHTML = rows.slice().reverse().map(function (r) {
+      var l = r.l;
+      var out = !!LOAN_OUT[l.type];
+      var sub = [shortDate(l.date)];
+      if (l.note) sub.push(l.note);
+      sub.push('baaki ' + inr(Math.abs(r.bal)));
+      return '<li><button class="tx" data-loan="' + esc(l.id) + '">' +
+        '<span class="tx-ic" style="background:' + (out ? hexA('#E11D48', .12) : hexA('#0E9F6E', .12)) + ';color:' +
+        (out ? 'var(--expense)' : 'var(--income)') + ';font-weight:700">' + LOAN_ARROW[l.type] + '</span>' +
+        '<span class="tx-mid"><span class="tx-title">' + LOAN_LABELS[l.type] + '</span>' +
+        '<span class="tx-sub">' + esc(sub.join(' · ')) + '</span></span>' +
+        '<span class="tx-amt ' + (out ? 'out' : 'in') + '">' + inr(l.amount) + '</span>' +
+        '</button></li>';
+    }).join('');
+  }
+
+  function openPerson(name) {
+    State.person = name;
+    $('#peopleCard').hidden = true;
+    $('#personCard').hidden = false;
+    renderPerson();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function closePerson() {
+    State.person = '';
+    $('#peopleCard').hidden = false;
+    $('#personCard').hidden = true;
+    renderUdhaar();
+  }
+
   /* ---------------- navigation ---------------- */
   function setView(v) {
     State.view = v;
@@ -534,6 +776,74 @@
     commit(entry, isNew);
   }
 
+  /* ---------------- loan (udhaar) sheet ---------------- */
+  function openLoanSheet(loan, opts) {
+    opts = opts || {};
+    State.loanEdit = {
+      loan: normalizeLoan(loan),
+      isNew: !!opts.isNew,
+      type: loan.type || 'given'
+    };
+
+    $('#loanTitle').textContent = opts.isNew ? 'Naya udhaar' : 'Udhaar badlein';
+    $('#lPerson').value = loan.person || '';
+    $('#lAmount').value = loan.amount ? loan.amount : '';
+    $('#lDate').value = loan.date || todayISO();
+    $('#lNote').value = loan.note || '';
+    $('#loanDelete').hidden = !!opts.isNew;
+    $('#loanHint').textContent = opts.hint || '';
+
+    renderLoanChips();
+    renderPersonNames();
+    openSheet('loan');
+
+    if (!loan.person) setTimeout(function () { $('#lPerson').focus(); }, 260);
+    else if (!loan.amount) setTimeout(function () { $('#lAmount').focus(); }, 260);
+  }
+
+  function renderLoanChips() {
+    if (!State.loanEdit) return;
+    $$('#loanTypeChips button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-lt') === State.loanEdit.type);
+    });
+  }
+
+  function saveLoan() {
+    if (!State.loanEdit) return;
+
+    var person = $('#lPerson').value.trim().replace(/\s+/g, ' ');
+    if (!person) { toast('Kiska naam likhein'); $('#lPerson').focus(); return; }
+
+    // pehle se isi naam ka banda ho to wahi casing use karein
+    var map = personMap();
+    var keys = Object.keys(map);
+    for (var k = 0; k < keys.length; k++) {
+      if (keys[k].toLowerCase() === person.toLowerCase()) { person = keys[k]; break; }
+    }
+    if (person === person.toLowerCase()) {
+      person = person.split(' ').map(function (w) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }).join(' ');
+    }
+
+    var amt = parseFloat($('#lAmount').value);
+    if (!amt || amt <= 0) { toast('Amount daalein'); $('#lAmount').focus(); return; }
+
+    var loan = {
+      id: State.loanEdit.loan.id,
+      createdAt: State.loanEdit.loan.createdAt,
+      person: person,
+      type: State.loanEdit.type,
+      amount: Math.round(amt * 100) / 100,
+      date: $('#lDate').value || todayISO(),
+      note: $('#lNote').value.trim()
+    };
+
+    var isNew = State.loanEdit.isNew;
+    closeSheet('loan');
+    commitLoan(loan, isNew);
+  }
+
   /* ---------------- voice ---------------- */
   var rec = null, recActive = false;
 
@@ -622,11 +932,25 @@
     text = String(text || '').trim();
     if (!text) return;
 
-    var parsed = P.parse(text);
+    var parsed = P.parse(text, { context: State.view === 'udhaar' ? 'udhaar' : 'entry' });
     closeSheet('voice');
 
     var hint = 'Suna: “' + text + '”';
     if (!parsed.amount) hint += ' · amount nahi mila, khud daal dein.';
+
+    if (parsed.kind === 'udhaar') {
+      if (!parsed.person) hint += ' · naam bhi likh dein.';
+      openLoanSheet({
+        id: newId(),
+        person: parsed.person,
+        type: parsed.loanType,
+        amount: parsed.amount,
+        date: parsed.date,
+        note: parsed.note,
+        createdAt: new Date().toISOString()
+      }, { isNew: true, hint: hint });
+      return;
+    }
 
     openEdit({
       id: newId(),
@@ -638,6 +962,31 @@
       payment: parsed.payment,
       createdAt: new Date().toISOString()
     }, { isNew: true, hint: hint });
+  }
+
+  var VOICE_EG = {
+    entry: ['chai pe pachas rupaye', 'salary pandrah hazaar mili', 'kal auto se sau rupaye'],
+    udhaar: ['ramesh ko 500 udhaar diye', 'suresh se 1000 liye', 'mohan se 200 wapas mile']
+  };
+
+  function openVoice() {
+    var mode = State.view === 'udhaar' ? 'udhaar' : 'entry';
+    var eg = VOICE_EG[mode];
+    var chips = $$('.chip-eg');
+    chips.forEach(function (b, i) {
+      if (!eg[i]) { b.hidden = true; return; }
+      b.hidden = false;
+      b.textContent = eg[i];
+      b.setAttribute('data-eg', eg[i]);
+    });
+    var inp = $('#cmdInput');
+    inp.placeholder = mode === 'udhaar' ? 'jaise: ramesh ko 500 udhaar diye' : 'jaise: chai pe pachas rupaye';
+
+    openSheet('voice');
+    setVoiceStatus('Mic par tap karein');
+    $('#voiceHeard').textContent = '';
+    inp.value = '';
+    setTimeout(startListening, 320);
   }
 
   /* ---------------- export ---------------- */
@@ -770,13 +1119,7 @@
       }, { isNew: true });
     });
 
-    $('#fab').addEventListener('click', function () {
-      openSheet('voice');
-      setVoiceStatus('Mic par tap karein');
-      $('#voiceHeard').textContent = '';
-      $('#cmdInput').value = '';
-      setTimeout(startListening, 320);
-    });
+    $('#fab').addEventListener('click', openVoice);
 
     // close buttons
     $$('[data-close]').forEach(function (el) {
@@ -830,6 +1173,47 @@
       removeEntry(id);
     });
 
+    // udhaar
+    function newLoan(person) {
+      return {
+        id: newId(),
+        person: person || '',
+        type: 'given',
+        amount: 0,
+        date: todayISO(),
+        note: '',
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    $('#newLoanBtn').addEventListener('click', function () {
+      openLoanSheet(newLoan(''), { isNew: true });
+    });
+
+    $('#personAdd').addEventListener('click', function () {
+      openLoanSheet(newLoan(State.person), { isNew: true });
+    });
+
+    $('#personBack').addEventListener('click', closePerson);
+
+    $('#loanTypeChips').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button');
+      if (!b || !State.loanEdit) return;
+      State.loanEdit.type = b.getAttribute('data-lt');
+      renderLoanChips();
+    });
+
+    $('#loanSave').addEventListener('click', saveLoan);
+
+    $('#loanDelete').addEventListener('click', function () {
+      if (!State.loanEdit) return;
+      if (!window.confirm('Ye udhaar entry delete karni hai?')) return;
+      var id = State.loanEdit.loan.id;
+      closeSheet('loan');
+      removeLoanEntry(id);
+      if (State.person) renderPerson();
+    });
+
     // report interactions
     $('#catSeg').addEventListener('click', function (ev) {
       var b = ev.target.closest('button');
@@ -849,6 +1233,21 @@
         renderEntries();
         return;
       }
+
+      var personRow = ev.target.closest('[data-person]');
+      if (personRow) {
+        openPerson(personRow.getAttribute('data-person'));
+        return;
+      }
+
+      var loanTx = ev.target.closest('[data-loan]');
+      if (loanTx) {
+        var lid = loanTx.getAttribute('data-loan');
+        var li = indexIn(State.loans, lid);
+        if (li >= 0) openLoanSheet(State.loans[li], { isNew: false });
+        return;
+      }
+
       var tx = ev.target.closest('.tx');
       if (tx) {
         var id = tx.getAttribute('data-id');
@@ -882,8 +1281,13 @@
     $('#btnReset').addEventListener('click', function () {
       if (!window.confirm('Local cache clear karein? Sheet ka data safe rahega.')) return;
       State.entries = [];
+      State.loans = [];
       State.queue = [];
-      saveEntries(); saveQueue(); render();
+      State.person = '';
+      saveEntries(); saveLoans(); saveQueue();
+      $('#peopleCard').hidden = false;
+      $('#personCard').hidden = true;
+      render();
       toast('Local cache clear ho gaya');
     });
     $('#langSel').addEventListener('change', function (ev) {

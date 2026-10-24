@@ -344,6 +344,19 @@
   var STOP = ('pe par ka ki ke ko se me mein mai hai hua hui huwa tha thi the ek and aur or do of to for a an ' +
     'rupees rupaye rs rupya rupaiya inr paisa paise kar karke liye lie die dia wala wali wale bolte bola bolo bhi ab').split(/\s+/).map(normWord);
 
+  /* udhaar / loan words */
+  var LOAN_N = ['udhaar', 'udhar', 'udhari', 'udhaari', 'karz', 'karza', 'karja', 'loan', 'udhaar'].map(normWord);
+  var GIVE_N = ['diya', 'diye', 'di', 'de', 'dena', 'dene', 'dia', 'diyo', 'de diya', 'de diye'].map(normWord);
+  var TAKE_N = ['liya', 'liye', 'lie', 'li', 'lena', 'lene', 'liyo', 'liyaa'].map(normWord);
+  var BACK_N = ['wapas', 'vapas', 'wapsi', 'lautaya', 'lauta', 'return', 'returns'].map(normWord);
+  var RECV_N = ['mila', 'mile', 'mili', 'aaya', 'aaye', 'aayi', 'received', 'mil'].map(normWord);
+  var PAID_N = ['kiya', 'kiye', 'ki', 'diya', 'diye', 'lautaya', 'return', 'paid'].map(normWord);
+
+  function hasWord(norm, list) {
+    for (var i = 0; i < list.length; i++) if (norm.indexOf(list[i]) >= 0) return true;
+    return false;
+  }
+
   var DAYS = {};
   var DAYS_RAW = {
     somvar: 1, somwar: 1, monday: 1, mon: 1,
@@ -436,6 +449,69 @@
   /* ---------------------------------------------------------
      7. Main parser
      --------------------------------------------------------- */
+  function buildNote(tokens, norm, consumed) {
+    var out = [];
+    for (var i = 0; i < tokens.length; i++) {
+      if (consumed[i]) continue;
+      var w = norm[i];
+      if (!w || STOP.indexOf(w) >= 0) continue;
+      if (numToken(tokens[i])) continue;
+      out.push(tokens[i]);
+    }
+    var note = out.join(' ').replace(/\s+/g, ' ').trim();
+    return note.length > 60 ? note.slice(0, 60) : note;
+  }
+
+  function isPaymentWord(w) {
+    var found = false;
+    Object.keys(PAY_N).forEach(function (k) {
+      if (PAY_N[k].indexOf(w) >= 0) found = true;
+    });
+    return found;
+  }
+
+  function extractPerson(tokens, norm, consumed) {
+    var sep = -1, i;
+    for (i = 0; i < norm.length; i++) {
+      if (consumed[i]) continue;
+      if (norm[i] === 'ko' || norm[i] === 'se') { sep = i; break; }
+    }
+    if (sep < 0) return '';
+
+    var words = [];
+    for (var j = sep - 1; j >= 0 && words.length < 2; j--) {
+      if (consumed[j]) continue;
+      var w = norm[j];
+      if (!w || STOP.indexOf(w) >= 0) break;
+      if (numToken(tokens[j])) break;
+      if (LOAN_N.indexOf(w) >= 0) break;
+      if (GIVE_N.indexOf(w) >= 0 || TAKE_N.indexOf(w) >= 0 || BACK_N.indexOf(w) >= 0) break;
+      if (isPaymentWord(w)) break;
+      words.unshift(tokens[j]);
+      consumed[j] = true;
+    }
+    return words.join(' ').trim();
+  }
+
+  function loanDirection(norm) {
+    var back = hasWord(norm, BACK_N);
+    var give = hasWord(norm, GIVE_N);
+    var take = hasWord(norm, TAKE_N);
+
+    if (back && hasWord(norm, RECV_N)) return 'received';
+    if (back && (give || hasWord(norm, PAID_N))) return 'paid';
+    if (norm.indexOf('se') >= 0 && take) return 'taken';
+    if (norm.indexOf('ko') >= 0 && give) return 'given';
+    if (take && !give) return 'taken';
+    return 'given';
+  }
+
+  function capName(s) {
+    return String(s || '').split(/\s+/).filter(Boolean).map(function (w) {
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ');
+  }
+
   function parse(text, opts) {
     opts = opts || {};
     var now = opts.now ? new Date(opts.now) : new Date();
@@ -446,6 +522,7 @@
 
     var result = {
       raw: String(text || ''),
+      kind: 'entry',
       amount: 0,
       type: 'expense',
       category: 'Other',
@@ -526,6 +603,27 @@
       for (var b = best.start; b <= best.end; b++) consumed[b] = true;
     }
 
+    /* ---- 7c2. udhaar / loan ---- */
+    var isLoan = opts.context === 'udhaar' || hasWord(norm, LOAN_N);
+    if (isLoan) {
+      var person = extractPerson(tokens, norm, consumed);
+      var dir = loanDirection(norm);
+      // loan ke verbs/words note me na aayein
+      for (var li = 0; li < norm.length; li++) {
+        if (consumed[li]) continue;
+        if (LOAN_N.indexOf(norm[li]) >= 0 || GIVE_N.indexOf(norm[li]) >= 0 ||
+            TAKE_N.indexOf(norm[li]) >= 0 || BACK_N.indexOf(norm[li]) >= 0 ||
+            RECV_N.indexOf(norm[li]) >= 0 || PAID_N.indexOf(norm[li]) >= 0) {
+          consumed[li] = true;
+        }
+      }
+      result.kind = 'udhaar';
+      result.person = capName(person);
+      result.loanType = dir;
+      result.note = buildNote(tokens, norm, consumed);
+      return result;
+    }
+
     /* ---- 7d. category ---- */
     var catScores = {};
     CATS.forEach(function (c) {
@@ -568,16 +666,7 @@
     }
 
     /* ---- 7f. note (bacha hua text) ---- */
-    var noteWords = [];
-    for (var n = 0; n < tokens.length; n++) {
-      if (consumed[n]) continue;
-      var ww = norm[n];
-      if (!ww || STOP.indexOf(ww) >= 0) continue;
-      if (numToken(tokens[n])) continue;
-      noteWords.push(tokens[n]);
-    }
-    var note = noteWords.join(' ').replace(/\s+/g, ' ').trim();
-    result.note = note.length > 60 ? note.slice(0, 60) : note;
+    result.note = buildNote(tokens, norm, consumed);
 
     return result;
   }

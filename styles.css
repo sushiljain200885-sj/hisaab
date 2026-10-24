@@ -100,6 +100,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 .conn-pill[data-state="syncing"] .dot { background: #F59E0B; animation: blink 1s infinite; }
 .conn-pill[data-state="offline"] .dot { background: var(--expense); }
 .conn-pill[data-state="offline"] { color: var(--expense); }
+.conn-pill[data-state="auth"] .dot { background: #F59E0B; }
+.conn-pill[data-state="auth"] { color: #B45309; }
+[data-theme="dark"] .conn-pill[data-state="auth"] { color: #FBBF24; }
 .conn-pill[data-state="demo"] .dot { background: #94A3B8; }
 
 @keyframes blink { 50% { opacity: .25; } }
@@ -444,6 +447,55 @@ ul { margin: 0; padding: 0; list-style: none; }
   flex: 0 0 auto; padding: 7px 11px; border-radius: 999px;
   background: var(--bg); border: 1px solid var(--line);
   font-size: 12px; color: var(--muted); font-weight: 600;
+}
+
+/* ---------------- udhaar khata ---------------- */
+.btn.sm { padding: 7px 12px; font-size: 12.5px; border-radius: 10px; }
+
+.person-list { display: flex; flex-direction: column; }
+.person-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 4px; width: 100%; text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.person-row:last-child { border-bottom: 0; }
+.person-row:active { background: color-mix(in srgb, var(--line) 45%, transparent); }
+
+.avatar {
+  width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 15px;
+  background: var(--brand-soft); color: var(--brand-dark);
+}
+[data-theme="dark"] .avatar { color: var(--brand); }
+
+.p-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.p-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+.p-amt { text-align: right; white-space: nowrap; font-size: 13.5px; font-weight: 700; }
+.p-amt .lbl {
+  display: block; font-size: 9.5px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 1px;
+}
+.p-amt.in { color: var(--income); }
+.p-amt.out { color: var(--expense); }
+.p-amt.zero { color: var(--muted); }
+
+.person-total {
+  display: flex; align-items: baseline; gap: 9px;
+  padding: 8px 4px 14px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.person-total strong { font-size: 24px; font-weight: 800; letter-spacing: -.7px; }
+.person-total strong.in { color: var(--income); }
+.person-total strong.out { color: var(--expense); }
+.person-total span { font-size: 12px; color: var(--muted); }
+
+.loan-tag {
+  display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .4px; padding: 2px 6px; border-radius: 6px; margin-left: 6px;
+  background: color-mix(in srgb, var(--line) 70%, transparent); color: var(--muted);
 }
 
 /* ---------------- toast ---------------- */
