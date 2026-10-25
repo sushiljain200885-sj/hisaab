@@ -19,9 +19,10 @@ var HEADERS = ['ID', 'Date', 'Type', 'Category', 'Amount', 'Note', 'Payment', 'C
 var LOAN_SHEET = 'UDHAAR';
 var LOAN_HEADERS = ['ID', 'Date', 'Person', 'Type', 'Amount', 'Note', 'CreatedAt'];
 
-var TOKEN_TTL = 21600;   // 6 ghante
+var TOKEN_TTL = 7776000; // 90 din — baar baar password na maange
 var MAX_TRIES = 6;       // galat password ki limit
 var LOCK_TTL = 900;      // 15 minute lockout
+var API_VERSION = 2;     // 2 = udhaar support (deploy check ke liye)
 
 /* ----------------------------- helpers ----------------------------- */
 
@@ -204,13 +205,27 @@ function loanRowFor_(l) {
 
 function issueToken_() {
   var tok = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  CacheService.getScriptCache().put('tok_' + tok, '1', TOKEN_TTL);
+  pruneTokens_();
+  props_().setProperty('tok_' + tok, String(Date.now() + TOKEN_TTL * 1000));
   return tok;
 }
 
 function tokenOk_(tok) {
   if (!tok) return false;
-  return CacheService.getScriptCache().get('tok_' + tok) === '1';
+  var until = Number(props_().getProperty('tok_' + tok) || 0);
+  return until > Date.now();
+}
+
+// expired token hata dete hain (Properties me jagah bachane ke liye)
+function pruneTokens_() {
+  try {
+    var all = props_().getProperties();
+    var now = Date.now();
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf('tok_') !== 0) return;
+      if (Number(all[k] || 0) <= now) props_().deleteProperty(k);
+    });
+  } catch (e) {}
 }
 
 function lockedUntil_() {
@@ -290,11 +305,11 @@ function doGet(e) {
     var action = (e && e.parameter && e.parameter.action) || 'ping';
 
     if (action === 'ping') {
-      return json_({ ok: true, name: 'Hisaab API', time: new Date().toISOString() });
+      return json_({ ok: true, name: 'Hisaab API', version: API_VERSION, time: new Date().toISOString() });
     }
 
     var gate = authenticate_(null, e);
-    if (!gate.ok) return json_({ ok: false, error: 'unauthorised', message: gate.error });
+    if (!gate.ok) return json_({ ok: false, error: gate.error || 'unauthorised', message: gate.message || gate.error });
 
     return json_({ ok: true, entries: readAll_() });
   } catch (err) {
@@ -317,7 +332,7 @@ function doPost(e) {
     var action = String(data.action || 'list');
 
     if (action === 'ping') {
-      return json_({ ok: true, name: 'Hisaab API', time: new Date().toISOString() });
+      return json_({ ok: true, name: 'Hisaab API', version: API_VERSION, time: new Date().toISOString() });
     }
 
     if (action === 'auth') {
@@ -328,7 +343,11 @@ function doPost(e) {
 
     var gate = authenticate_(data, e);
     if (!gate.ok) {
-      return json_({ ok: false, error: 'unauthorised', message: gate.error });
+      return json_({
+        ok: false,
+        error: gate.error || 'unauthorised',
+        message: gate.message || gate.error
+      });
     }
 
     var sh = getSheet_();
@@ -430,6 +449,7 @@ function info() {
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
   Logger.log('Sheet      : ' + SpreadsheetApp.getActiveSpreadsheet().getName());
+  Logger.log('API version: ' + API_VERSION + (API_VERSION >= 2 ? ' (udhaar support hai)' : ' (purana — dobara deploy karein)'));
   Logger.log('Entries    : ' + Math.max(0, getSheet_().getLastRow() - 1));
   Logger.log('Password   : ' + (appPassword_() ? 'SET hai' : 'set nahi hai'));
   Logger.log('Web App URL: ' + (url || '(deploy karne ke baad milega)'));
